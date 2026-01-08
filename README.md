@@ -24,16 +24,6 @@ Quick Start
 tputop
 ```
 
-### Interactive Commands
-
-| Key | Action |
-|-----|--------|
-| F2 | Setup window |
-| F6 | Sort processes |
-| F9 | Kill process |
-| F10 / q | Quit |
-| F12 | Save config |
-
 TPU Pod Support
 ---------------
 
@@ -81,12 +71,6 @@ wget https://github.com/rdyro/libtpuinfo/releases/download/v0.0.1/libtpuinfo-lin
 sudo mv libtpuinfo-linux-x86_64.so /lib/libtpuinfo.so
 ```
 
-Or via podrun for all workers:
-
-```bash
-podrun -i -- bash -c 'wget https://github.com/rdyro/libtpuinfo/releases/download/v0.0.1/libtpuinfo-linux-x86_64.so && sudo mv libtpuinfo-linux-x86_64.so /lib/libtpuinfo.so'
-```
-
 Displayed Information
 ---------------------
 
@@ -111,24 +95,6 @@ For each TPU device:
 | HOST MEM | Host memory usage |
 | Command | Process command line |
 
-Troubleshooting
----------------
-
-### Remote workers not showing
-
-1. Check SSH connectivity:
-```bash
-ssh -o BatchMode=yes <worker-ip> 'echo ok'
-```
-
-2. Check libtpuinfo on remote worker:
-```bash
-ssh <worker-ip> 'python3 -c "import ctypes; lib=ctypes.CDLL(\"libtpuinfo.so\"); print(lib.tpu_chip_count())"'
-```
-
-### Slow startup
-
-The initial connection to remote workers may take a few seconds. After startup, data is cached and refreshed at 20fps.
 
 License
 -------
