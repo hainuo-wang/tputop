@@ -67,7 +67,7 @@ cmake -DTPU_SUPPORT=ON ..
 make
 
 # Install
-sudo cp ./src/tputop /usr/local/bin/
+sudo make install
 ```
 
 ### Other Worker Nodes (libtpuinfo Only)

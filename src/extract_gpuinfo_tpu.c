@@ -32,6 +32,11 @@
 #include <sys/time.h>
 #include <pwd.h>
 #include <inttypes.h>
+#include <pthread.h>
+#include <signal.h>
+
+/* Global exit flag for quick shutdown */
+static volatile sig_atomic_t tpu_exit_requested = 0;
 
 /* Environment variable to enable remote TPU pod monitoring */
 #define NVTOP_TPU_POD_ENV "NVTOP_TPU_POD_FILE"
@@ -65,6 +70,8 @@ struct remote_host {
   int tpu_count;
   struct tpu_chip_usage_data *usage_data;
   nvtop_time last_refresh;
+  pthread_t refresh_thread;
+  bool thread_running;
 };
 
 static struct remote_host *remote_hosts = NULL;
@@ -86,6 +93,13 @@ static void free_ptr(void **ptr);
 static bool load_remote_hosts(void);
 static bool is_remote_cache_valid(int host_idx);
 static bool refresh_remote_tpu_cache(int host_idx);
+static void *refresh_remote_thread(void *arg);
+static void refresh_all_remote_hosts_parallel(void);
+
+/* Set exit flag for quick shutdown */
+void gpuinfo_tpu_request_exit(void) {
+  tpu_exit_requested = 1;
+}
 
 struct gpu_vendor gpu_vendor_tpu = {
     .init = gpuinfo_tpu_init,
@@ -425,6 +439,40 @@ static bool refresh_remote_tpu_cache(int host_idx) {
   }
   return true;
 }
+
+/* Thread function for parallel remote refresh */
+static void *refresh_remote_thread(void *arg) {
+  int host_idx = *(int *)arg;
+  free(arg);
+  if (!tpu_exit_requested) {
+    refresh_remote_tpu_cache(host_idx);
+  }
+  if (host_idx >= 0 && host_idx < remote_host_count) {
+    remote_hosts[host_idx].thread_running = false;
+  }
+  return NULL;
+}
+
+/* Refresh all remote hosts in parallel */
+static void refresh_all_remote_hosts_parallel(void) {
+  if (!remote_monitoring_enabled || tpu_exit_requested) return;
+
+  for (int h = 0; h < remote_host_count; h++) {
+    if (tpu_exit_requested) break;
+    if (is_remote_cache_valid(h)) continue;
+    if (remote_hosts[h].thread_running) continue;
+
+    int *arg = malloc(sizeof(int));
+    if (!arg) continue;
+    *arg = h;
+    remote_hosts[h].thread_running = true;
+    if (pthread_create(&remote_hosts[h].refresh_thread, NULL,
+                       refresh_remote_thread, arg) != 0) {
+      remote_hosts[h].thread_running = false;
+      free(arg);
+    }
+  }
+}
 /* Remote TPU support --------------------------------------------------------------------------- */
 
 bool gpuinfo_tpu_init(void) {
@@ -505,6 +553,18 @@ void free_ptr(void **ptr) {
 }
 
 void gpuinfo_tpu_shutdown(void) {
+  // Set exit flag to stop any pending operations
+  tpu_exit_requested = 1;
+
+  // Wait for running threads to finish
+  if (remote_hosts) {
+    for (int i = 0; i < remote_host_count; i++) {
+      if (remote_hosts[i].thread_running) {
+        pthread_join(remote_hosts[i].refresh_thread, NULL);
+      }
+    }
+  }
+
   free_ptr((void **)&gpu_infos);
   free_ptr((void **)&latest_chips_usage_data);
   free_ptr((void **)&_pids);
@@ -621,11 +681,11 @@ void gpuinfo_tpu_refresh_dynamic_info(struct gpu_info *_gpu_info) {
   struct tpu_chip_usage_data usage_data = {0};
 
   if (gpu_info->is_remote) {
-    // Remote TPU: get data from remote cache
+    // Remote TPU: trigger parallel refresh and get data from cache
     int h = gpu_info->remote_host_idx;
     int d = gpu_info->remote_device_id;
     if (h >= 0 && h < remote_host_count) {
-      refresh_remote_tpu_cache(h);
+      refresh_all_remote_hosts_parallel();
       if (d >= 0 && d < remote_hosts[h].tpu_count && remote_hosts[h].usage_data) {
         usage_data = remote_hosts[h].usage_data[d];
       }

@@ -143,6 +143,7 @@ if(TPU_SUPPORT)
     set(TPU_SUPPORT_DEFAULT OFF)
   endif()
   target_sources(tputop PRIVATE extract_gpuinfo_tpu.c)
+  target_link_libraries(tputop PRIVATE pthread)
 endif()
 
 if(ROCKCHIP_SUPPORT)
