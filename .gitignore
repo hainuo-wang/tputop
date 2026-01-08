@@ -1,0 +1,6 @@
+*.o
+*ctags
+build/
+cmake-build*/
+.vscode
+.idea
