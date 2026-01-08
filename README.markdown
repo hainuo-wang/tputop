@@ -21,12 +21,7 @@ Quick Start
 ### Running TPUTOP
 
 ```bash
-# Run tputop (auto-discovers TPU Pod workers)
-./build/src/tputop
-
-# Or with manual worker list
-export NVTOP_TPU_POD_FILE=~/podips.txt
-./build/src/tputop
+tputop
 ```
 
 ### Interactive Commands
@@ -42,30 +37,7 @@ export NVTOP_TPU_POD_FILE=~/podips.txt
 TPU Pod Support
 ---------------
 
-TPUTOP automatically discovers all workers in a TPU Pod using the GCP metadata service. It reads the `worker-network-endpoints` attribute to find all worker IPs.
-
-### Auto-Discovery
-
-On GCP TPU VMs, TPUTOP automatically:
-1. Queries metadata service for worker endpoints
-2. Filters out the local worker
-3. Connects to remote workers via SSH to collect TPU metrics
-
-### Manual Configuration
-
-If auto-discovery doesn't work, create a file with worker IPs:
-
-```bash
-# Create worker list file
-cat > ~/podips.txt << EOF
-10.130.0.25
-10.130.0.24
-10.130.0.22
-EOF
-
-# Set environment variable
-export NVTOP_TPU_POD_FILE=~/podips.txt
-```
+TPUTOP automatically discovers all workers in a TPU Pod using the GCP metadata service. It reads the `worker-network-endpoints` attribute to find all worker IPs, filters out the local worker, and connects to remote workers via SSH to collect TPU metrics.
 
 Requirements
 ------------
@@ -75,20 +47,44 @@ Requirements
 - SSH access to other workers in the Pod (passwordless)
 - Python 3 on all workers
 
-Build
------
+Installation
+------------
+
+### Main Node (Full Installation)
 
 ```bash
-# Install dependencies
-sudo apt install cmake libncurses5-dev libncursesw5-dev
+# Install build dependencies
+sudo apt install -y libdrm-dev libsystemd-dev libudev-dev cmake libncurses5-dev libncursesw5-dev git
 
-# Build
-mkdir -p build && cd build
-cmake .. -DTPU_SUPPORT=ON
-make -j$(nproc)
+# Install libtpuinfo
+wget https://github.com/rdyro/libtpuinfo/releases/download/v0.0.1/libtpuinfo-linux-x86_64.so
+sudo mv libtpuinfo-linux-x86_64.so /lib/libtpuinfo.so
 
-# Run
-./src/tputop
+# Clone and build
+git clone https://github.com/hainuo-wang/tputop.git
+cd tputop && mkdir build && cd build
+cmake -DTPU_SUPPORT=ON ..
+make
+
+# Install
+sudo cp ./src/tputop /usr/local/bin/
+```
+
+### Other Worker Nodes (libtpuinfo Only)
+
+For TPU pods with multiple workers, other nodes only need libtpuinfo installed.
+The main node will connect via SSH to collect TPU metrics.
+
+```bash
+# Install libtpuinfo only (no need to install tputop)
+wget https://github.com/rdyro/libtpuinfo/releases/download/v0.0.1/libtpuinfo-linux-x86_64.so
+sudo mv libtpuinfo-linux-x86_64.so /lib/libtpuinfo.so
+```
+
+Or via podrun for all workers:
+
+```bash
+podrun -i -- bash -c 'wget https://github.com/rdyro/libtpuinfo/releases/download/v0.0.1/libtpuinfo-linux-x86_64.so && sudo mv libtpuinfo-linux-x86_64.so /lib/libtpuinfo.so'
 ```
 
 Displayed Information
