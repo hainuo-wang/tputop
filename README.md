@@ -13,7 +13,7 @@ TPUTOP is a TPU monitoring tool based on NVTOP, providing htop-like task monitor
 - Process information display (PID, USER, CPU, Memory, Command)
 - 20fps refresh rate for real-time monitoring
 
-![TPUTOP interface](/screenshot/NVTOP_ex1.png)
+![TPUTOP interface](/screenshot/tputop.png)
 
 Quick Start
 -----------
