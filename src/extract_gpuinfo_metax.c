@@ -223,7 +223,7 @@ __attribute__((constructor)) static void init_extract_gpuinfo_metax(void) { regi
  *
  */
 static bool gpuinfo_metax_init(void) {
-  printf("gpuinfo_metax_init\n");
+  printf("tpuinfo_metax_init\n");
   libmxsml_handle = dlopen("/opt/mxdriver/lib/libmxsml.so", RTLD_LAZY);
   if (!libmxsml_handle)
     libmxsml_handle = dlopen("/opt/maca/lib/libmxsml.so", RTLD_LAZY);
@@ -344,7 +344,7 @@ static const char *gpuinfo_metax_last_error_string(void) {
 }
 
 static bool gpuinfo_metax_get_device_handles(struct list_head *devices, unsigned int *count) {
-  printf("gpuinfo_metax_get_device_handles...\n");
+  printf("tpuinfo_metax_get_device_handles...\n");
   if (!libmxsml_handle)
     return false;
 
