@@ -104,5 +104,5 @@ TPUTOP is based on NVTOP and is licensed under GPLv3.
 Acknowledgements
 ----------------
 
-- [NVTOP](https://github.com/Syllo/nvtop) - The original GPU monitoring tool this project is based on
-- [Google TPU Research Cloud (TRC)](https://sites.research.google/trc/) - For providing TPU resources for development and testing
+- nvtop - The original GPU monitoring tool this project is based on.
+- Google TPU Research Cloud (TRC) - For providing TPU resources for development and testing.
