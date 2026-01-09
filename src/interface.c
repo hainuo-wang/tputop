@@ -1470,10 +1470,10 @@ static unsigned populate_plot_data_from_ring_buffer(const struct nvtop_interface
         // Populate the legend
         switch (info) {
         case plot_gpu_rate:
-          snprintf(plot_legend[in_processing], PLOT_MAX_LEGEND_SIZE, "GPU%u %%", dev_id);
+          snprintf(plot_legend[in_processing], PLOT_MAX_LEGEND_SIZE, "TPU%u %%", dev_id);
           break;
         case plot_gpu_mem_rate:
-          snprintf(plot_legend[in_processing], PLOT_MAX_LEGEND_SIZE, "GPU%u mem%%", dev_id);
+          snprintf(plot_legend[in_processing], PLOT_MAX_LEGEND_SIZE, "TPU%u mem%%", dev_id);
           break;
         case plot_encoder_rate:
           snprintf(plot_legend[in_processing], PLOT_MAX_LEGEND_SIZE, "GPU%u encode%%", dev_id);
