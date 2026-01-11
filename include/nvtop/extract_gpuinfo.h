@@ -26,6 +26,14 @@
 
 #include <stdbool.h>
 
+/* TPU monitoring mode */
+#define TPU_MODE_DEFAULT 0  /* Local + remote (GCP metadata -> NVTOP_TPU_POD_FILE) */
+#define TPU_MODE_LOCAL   1  /* Local TPU only */
+#define TPU_MODE_PODIPS  2  /* Only from podips file, no local */
+
+/* Set TPU monitoring mode (must be called before gpuinfo_init_info_extraction) */
+void gpuinfo_tpu_set_mode(int mode, const char *podips_path);
+
 bool gpuinfo_init_info_extraction(unsigned *total_dev_count, struct list_head *devices);
 
 bool gpuinfo_shutdown_info_extraction(struct list_head *devices);

@@ -43,6 +43,17 @@ static volatile sig_atomic_t tpu_exit_requested = 0;
 #define REMOTE_CACHE_VALIDITY_MS 50
 #define MAX_REMOTE_HOSTS 64
 #define MAX_HOST_LEN 64
+#define DEFAULT_PODIPS_FILE "~/podips.txt"
+
+/* TPU monitoring mode */
+typedef enum {
+  TPU_MODE_DEFAULT,  /* Local + remote (GCP metadata -> NVTOP_TPU_POD_FILE) */
+  TPU_MODE_LOCAL,    /* Local TPU only */
+  TPU_MODE_PODIPS    /* Only from podips file, no local */
+} tpu_monitor_mode_t;
+
+static tpu_monitor_mode_t tpu_monitor_mode = TPU_MODE_DEFAULT;
+static char tpu_podips_path[512] = "";
 
 struct gpu_info_tpu {
   struct gpu_info base;
@@ -99,6 +110,15 @@ static void refresh_all_remote_hosts_parallel(void);
 /* Set exit flag for quick shutdown */
 void gpuinfo_tpu_request_exit(void) {
   tpu_exit_requested = 1;
+}
+
+/* Set TPU monitoring mode */
+void gpuinfo_tpu_set_mode(int mode, const char *podips_path) {
+  tpu_monitor_mode = (tpu_monitor_mode_t)mode;
+  if (podips_path && podips_path[0] != '\0') {
+    strncpy(tpu_podips_path, podips_path, sizeof(tpu_podips_path) - 1);
+    tpu_podips_path[sizeof(tpu_podips_path) - 1] = '\0';
+  }
 }
 
 struct gpu_vendor gpu_vendor_tpu = {
@@ -295,27 +315,18 @@ static bool load_from_metadata(void) {
   return remote_host_count > 0;
 }
 
-static bool load_remote_hosts(void) {
-  // First try to load from GCP metadata service (auto-discovery)
-  if (load_from_metadata()) {
-    remote_monitoring_enabled = true;
-    return true;
-  }
-
-  // Fallback: load from file specified by environment variable
-  char *pod_file = getenv(NVTOP_TPU_POD_ENV);
-  if (!pod_file) return false;
-
-  char filepath[512];
-  if (pod_file[0] == '~') {
+/* Load remote hosts from a file */
+static bool load_from_file(const char *filepath) {
+  char expanded_path[512];
+  if (filepath[0] == '~') {
     char *home = get_home_directory();
     if (!home) return false;
-    snprintf(filepath, sizeof(filepath), "%s%s", home, pod_file + 1);
+    snprintf(expanded_path, sizeof(expanded_path), "%s%s", home, filepath + 1);
   } else {
-    snprintf(filepath, sizeof(filepath), "%s", pod_file);
+    snprintf(expanded_path, sizeof(expanded_path), "%s", filepath);
   }
 
-  FILE *f = fopen(filepath, "r");
+  FILE *f = fopen(expanded_path, "r");
   if (!f) return false;
 
   remote_hosts = (struct remote_host *)calloc(MAX_REMOTE_HOSTS, sizeof(struct remote_host));
@@ -345,6 +356,31 @@ static bool load_remote_hosts(void) {
 
   remote_monitoring_enabled = (remote_host_count > 0);
   return remote_monitoring_enabled;
+}
+
+static bool load_remote_hosts(void) {
+  // TPU_MODE_LOCAL: no remote hosts
+  if (tpu_monitor_mode == TPU_MODE_LOCAL) {
+    return false;
+  }
+
+  // TPU_MODE_PODIPS: only load from podips file
+  if (tpu_monitor_mode == TPU_MODE_PODIPS) {
+    const char *path = (tpu_podips_path[0] != '\0') ? tpu_podips_path : DEFAULT_PODIPS_FILE;
+    return load_from_file(path);
+  }
+
+  // TPU_MODE_DEFAULT: GCP metadata -> NVTOP_TPU_POD_FILE
+  if (load_from_metadata()) {
+    remote_monitoring_enabled = true;
+    return true;
+  }
+
+  // Fallback: load from file specified by environment variable
+  char *pod_file = getenv(NVTOP_TPU_POD_ENV);
+  if (!pod_file) return false;
+
+  return load_from_file(pod_file);
 }
 
 static bool is_remote_cache_valid(int host_idx) {
@@ -479,7 +515,20 @@ bool gpuinfo_tpu_init(void) {
   char* error_msg;
   nvtop_get_current_time(&last_cache_refresh);
   // invalidate cache by putting it in the past
-  last_cache_refresh = nvtop_substract_time(last_cache_refresh, (nvtop_time){10, 0}); 
+  last_cache_refresh = nvtop_substract_time(last_cache_refresh, (nvtop_time){10, 0});
+
+  // In PODIPS mode, skip local TPU detection entirely
+  if (tpu_monitor_mode == TPU_MODE_PODIPS) {
+    tpu_chip_count = 0;
+    load_remote_hosts();
+    if (!remote_monitoring_enabled) {
+#ifndef NDEBUG
+      fprintf(stderr, "PODIPS mode: no remote hosts configured.\n");
+#endif
+      return false;
+    }
+    return true;
+  }
 
   // Load dynamic library symbols
   void *handle = dlopen(libname, RTLD_LAZY);

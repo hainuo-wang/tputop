@@ -74,9 +74,11 @@ static const char helpstring[] = "Available options:\n"
                                  "(default 30s, negative = always on screen)\n"
                                  "  -h --help         : Print help and exit\n"
                                  "  -s --snapshot     : Output the current gpu stats without ncurses"
-                                 "(useful for scripting)\n";
+                                 "(useful for scripting)\n"
+                                 "  -l --local        : Monitor local TPU only\n"
+                                 "  -o --podips[=FILE]: Monitor TPUs from podips file only (default: ~/podips.txt)\n";
 
-static const char versionString[] = "nvtop version " NVTOP_VERSION_STRING;
+static const char versionString[] = "tputop version " NVTOP_VERSION_STRING;
 
 static const struct option long_opts[] = {
     {.name = "delay", .has_arg = required_argument, .flag = NULL, .val = 'd'},
@@ -92,10 +94,12 @@ static const struct option long_opts[] = {
     {.name = "no-processes", .has_arg = no_argument, .flag = NULL, .val = 'P'},
     {.name = "reverse-abs", .has_arg = no_argument, .flag = NULL, .val = 'r'},
     {.name = "snapshot", .has_arg = no_argument, .flag = NULL, .val = 's'},
+    {.name = "local", .has_arg = no_argument, .flag = NULL, .val = 'l'},
+    {.name = "podips", .has_arg = optional_argument, .flag = NULL, .val = 'o'},
     {0, 0, 0, 0},
 };
 
-static const char opts[] = "hvd:c:CfE:pPris";
+static const char opts[] = "hvd:c:CfE:pPrislo::";
 
 int main(int argc, char **argv) {
   (void)setlocale(LC_CTYPE, "");
@@ -113,6 +117,8 @@ int main(int argc, char **argv) {
   bool show_snapshot = false;
   double encode_decode_hide_time = -1.;
   char *custom_config_file_path = NULL;
+  int tpu_mode = TPU_MODE_DEFAULT;
+  char *tpu_podips_path = NULL;
   while (true) {
     int optchar = getopt_long(argc, argv, opts, long_opts, NULL);
     if (optchar == -1)
@@ -174,6 +180,14 @@ int main(int argc, char **argv) {
     case 's':
       show_snapshot = true;
       break;
+    case 'l':
+      tpu_mode = TPU_MODE_LOCAL;
+      break;
+    case 'o':
+      tpu_mode = TPU_MODE_PODIPS;
+      if (optarg)
+        tpu_podips_path = optarg;
+      break;
     case ':':
     case '?':
       switch (optopt) {
@@ -219,6 +233,7 @@ int main(int argc, char **argv) {
   unsigned allDevCount = 0;
   LIST_HEAD(monitoredGpus);
   LIST_HEAD(nonMonitoredGpus);
+  gpuinfo_tpu_set_mode(tpu_mode, tpu_podips_path);
   if (!gpuinfo_init_info_extraction(&allDevCount, &monitoredGpus))
     return EXIT_FAILURE;
   if (allDevCount == 0) {
