@@ -76,7 +76,7 @@ static const char helpstring[] = "Available options:\n"
                                  "  -s --snapshot     : Output the current gpu stats without ncurses"
                                  "(useful for scripting)\n"
                                  "  -l --local        : Monitor local TPU only\n"
-                                 "  -o --podips[=FILE]: Monitor TPUs from podips file only (default: ~/podips.txt)\n";
+                                 "  -o --podips[=NAME]: Monitor TPUs from podips file only (default: ~/podips.txt, or ~/NAME.txt)\n";
 
 static const char versionString[] = "tputop version " NVTOP_VERSION_STRING;
 

@@ -366,7 +366,17 @@ static bool load_remote_hosts(void) {
 
   // TPU_MODE_PODIPS: only load from podips file
   if (tpu_monitor_mode == TPU_MODE_PODIPS) {
-    const char *path = (tpu_podips_path[0] != '\0') ? tpu_podips_path : DEFAULT_PODIPS_FILE;
+    char path[1024];
+    if (tpu_podips_path[0] == '\0') {
+      // Default: ~/podips.txt
+      snprintf(path, sizeof(path), "%s", DEFAULT_PODIPS_FILE);
+    } else if (strchr(tpu_podips_path, '/') == NULL && tpu_podips_path[0] != '~') {
+      // Just a name: convert to ~/name.txt
+      snprintf(path, sizeof(path), "~/%s.txt", tpu_podips_path);
+    } else {
+      // Full path provided
+      snprintf(path, sizeof(path), "%s", tpu_podips_path);
+    }
     return load_from_file(path);
   }
 
