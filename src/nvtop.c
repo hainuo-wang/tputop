@@ -392,5 +392,6 @@ int main(int argc, char **argv) {
   clean_ncurses(interface);
   gpuinfo_shutdown_info_extraction(&monitoredGpus);
 
-  return EXIT_SUCCESS;
+  // Use _exit() to avoid libtpuinfo.so destructor hanging
+  _exit(EXIT_SUCCESS);
 }
