@@ -78,6 +78,7 @@ struct tpu_chip_usage_data {
 
 struct remote_host {
   char ip[MAX_HOST_LEN];
+  char tpu_model[32];  // TPU model name from remote host
   int tpu_count;
   struct tpu_chip_usage_data *usage_data;
   nvtop_time last_refresh;
@@ -210,16 +211,84 @@ void reset_tpu_cache(bool fully) {
 /* TPU info cache ------------------------------------------------------------------------------- */
 
 /* TPU model detection -------------------------------------------------------------------------- */
+/* Cache for local TPU model name (from GCP metadata) */
+static char local_tpu_model[32] = "";
+static bool local_tpu_model_initialized = false;
+
+/* Parse TPU version from string (e.g., "v4-64" -> "TPU v4") */
+static bool parse_tpu_version(const char *str, char *out, size_t out_size) {
+  if (strstr(str, "v5lite") || strstr(str, "v5e")) {
+    snprintf(out, out_size, "TPU v5e");
+    return true;
+  } else if (strstr(str, "v5p")) {
+    snprintf(out, out_size, "TPU v5p");
+    return true;
+  } else if (strstr(str, "v4")) {
+    snprintf(out, out_size, "TPU v4");
+    return true;
+  } else if (strstr(str, "v3")) {
+    snprintf(out, out_size, "TPU v3");
+    return true;
+  } else if (strstr(str, "v2")) {
+    snprintf(out, out_size, "TPU v2");
+    return true;
+  }
+  return false;
+}
+
+/* Get TPU model from GCP metadata */
+static const char* get_tpu_model_from_metadata(void) {
+  if (local_tpu_model_initialized) {
+    return local_tpu_model[0] ? local_tpu_model : "TPU";
+  }
+  local_tpu_model_initialized = true;
+
+  char buf[128];
+
+  // First try accelerator-type (e.g., "v4-64")
+  FILE *fp = popen("curl -s -H 'Metadata-Flavor: Google' "
+                   "'http://metadata.google.internal/computeMetadata/v1/instance/attributes/accelerator-type' "
+                   "2>/dev/null", "r");
+  if (fp) {
+    if (fgets(buf, sizeof(buf), fp)) {
+      char *newline = strchr(buf, '\n');
+      if (newline) *newline = '\0';
+      parse_tpu_version(buf, local_tpu_model, sizeof(local_tpu_model));
+    }
+    pclose(fp);
+  }
+
+  // Fallback to machine-type if accelerator-type didn't work
+  if (!local_tpu_model[0]) {
+    fp = popen("curl -s -H 'Metadata-Flavor: Google' "
+               "'http://metadata.google.internal/computeMetadata/v1/instance/machine-type' "
+               "2>/dev/null", "r");
+    if (fp) {
+      if (fgets(buf, sizeof(buf), fp)) {
+        char *newline = strchr(buf, '\n');
+        if (newline) *newline = '\0';
+        parse_tpu_version(buf, local_tpu_model, sizeof(local_tpu_model));
+      }
+      pclose(fp);
+    }
+  }
+
+  return local_tpu_model[0] ? local_tpu_model : "TPU";
+}
+
 static const char* get_tpu_model_name(int device_id) {
   char path[128];
   snprintf(path, sizeof(path), "/sys/class/accel/accel%d/device/device", device_id);
   FILE *f = fopen(path, "r");
-  if (!f) return "TPU";
+  if (!f) {
+    // Fallback to GCP metadata
+    return get_tpu_model_from_metadata();
+  }
 
   char buf[32];
   if (!fgets(buf, sizeof(buf), f)) {
     fclose(f);
-    return "TPU";
+    return get_tpu_model_from_metadata();
   }
   fclose(f);
 
@@ -233,7 +302,7 @@ static const char* get_tpu_model_name(int device_id) {
     case 0x005e: return "TPU v4";
     case 0x0063: return "TPU v5e";
     case 0x0062: return "TPU v5p";
-    default: return "TPU";
+    default: return get_tpu_model_from_metadata();
   }
 }
 /* TPU model detection -------------------------------------------------------------------------- */
@@ -408,16 +477,20 @@ static bool refresh_remote_tpu_cache(int host_idx) {
   struct remote_host *host = &remote_hosts[host_idx];
   nvtop_get_current_time(&host->last_refresh);
 
-  // SSH command - get TPU info with process details
+  // SSH command - get TPU info with process details and model
   char cmd[4096];
   snprintf(cmd, sizeof(cmd),
            "ssh -o ConnectTimeout=2 -o BatchMode=yes -o StrictHostKeyChecking=no %s "
-           "'python3 -c \""
-           "import ctypes as C,os;"
+           "'MODEL=$(curl -s -m 1 -H \"Metadata-Flavor: Google\" "
+           "\"http://metadata.google.internal/computeMetadata/v1/instance/attributes/accelerator-type\" 2>/dev/null); "
+           "python3 -c \""
+           "import ctypes as C,os,sys;"
+           "r=sys.argv[1] if len(sys.argv)>1 else \\\"\\\";"
+           "model=\\\"TPU v5e\\\" if \\\"v5lite\\\" in r or \\\"v5e\\\" in r else \\\"TPU v5p\\\" if \\\"v5p\\\" in r else \\\"TPU v4\\\" if \\\"v4\\\" in r else \\\"TPU v3\\\" if \\\"v3\\\" in r else \\\"TPU v2\\\" if \\\"v2\\\" in r else \\\"TPU\\\";"
            "lib=C.CDLL(\\\"libtpuinfo.so\\\");"
            "lib.tpu_chip_count.restype=C.c_int;"
            "c=lib.tpu_chip_count();"
-           "print(c) if c<=0 else None;"
+           "print(model+\\\"|\\\"+str(c)) if c<=0 else None;"
            "exit(0) if c<=0 else None;"
            "lib.tpu_pids.argtypes=[C.POINTER(C.c_longlong),C.c_int];"
            "lib.tpu_metrics.argtypes=[C.c_int,C.POINTER(C.c_longlong),C.POINTER(C.c_longlong),C.POINTER(C.c_longlong),C.POINTER(C.c_double),C.c_int];"
@@ -428,8 +501,8 @@ static bool refresh_remote_tpu_cache(int host_idx) {
            "os.popen(f\\\"awk {{print\\\\\\$2*4096}} /proc/{pid}/statm\\\").read().strip() or \\\"0\\\","
            "os.popen(f\\\"cat /proc/{pid}/cmdline\\\").read().replace(chr(0),\\\" \\\")[:150].replace(\\\",\\\",\\\" \\\") or \\\"N/A\\\") if pid>0 else (\\\"N/A\\\",\\\"0\\\",\\\"0\\\",\\\"N/A\\\");"
            "R=[gi(p[i]) for i in range(c)];"
-           "print(str(c)+\\\"|\\\"+\\\"|\\\".join([f\\\"{d[i]}~{m[i]}~{t[i]}~{u[i]:.2f}~{p[i]}~{R[i][0]}~{R[i][1]}~{R[i][2]}~{R[i][3]}\\\" for i in range(c)]))"
-           "\"' 2>/dev/null",
+           "print(model+\\\"|\\\"+str(c)+\\\"|\\\"+\\\"|\\\".join([f\\\"{d[i]}~{m[i]}~{t[i]}~{u[i]:.2f}~{p[i]}~{R[i][0]}~{R[i][1]}~{R[i][2]}~{R[i][3]}\\\" for i in range(c)]))"
+           "\" \"$MODEL\"' 2>/dev/null",
            host->ip);
 
   FILE *fp = popen(cmd, "r");
@@ -442,10 +515,18 @@ static bool refresh_remote_tpu_cache(int host_idx) {
   }
   pclose(fp);
 
-  // Parse output: count|dev_id,mem_used,mem_total,duty,pid,user,cmd|...
+  // Parse output: model|count|dev_id~mem_used~mem_total~duty~pid~user~cpu~rss~cmd|...
   int count = 0;
   char *saveptr1 = NULL;
+
+  // First token: TPU model
   char *token = strtok_r(output, "|", &saveptr1);
+  if (!token) return false;
+  strncpy(host->tpu_model, token, sizeof(host->tpu_model) - 1);
+  host->tpu_model[sizeof(host->tpu_model) - 1] = '\0';
+
+  // Second token: count
+  token = strtok_r(NULL, "|", &saveptr1);
   if (!token) return false;
   count = atoi(token);
   if (count <= 0) return false;
@@ -719,14 +800,18 @@ void gpuinfo_tpu_populate_static_info(struct gpu_info *_gpu_info) {
   static_info->encode_decode_shared = false;
   RESET_ALL(static_info->valid);
 
-  const char *model = get_tpu_model_name(gpu_info->remote_device_id);
-
+  const char *model;
   if (gpu_info->is_remote && gpu_info->remote_host_idx >= 0 &&
       gpu_info->remote_host_idx < remote_host_count) {
+    // Remote TPU: use model from remote host (will be fetched on first refresh)
+    model = remote_hosts[gpu_info->remote_host_idx].tpu_model;
+    if (!model[0]) model = "TPU";
     snprintf(static_info->device_name, sizeof(static_info->device_name),
              "%s [%d@%s]", model, gpu_info->remote_device_id,
              remote_hosts[gpu_info->remote_host_idx].ip);
   } else {
+    // Local TPU: detect model locally
+    model = get_tpu_model_name(gpu_info->remote_device_id);
     snprintf(static_info->device_name, sizeof(static_info->device_name),
              "%s [%d]", model, gpu_info->remote_device_id);
   }
@@ -736,6 +821,7 @@ void gpuinfo_tpu_populate_static_info(struct gpu_info *_gpu_info) {
 void gpuinfo_tpu_refresh_dynamic_info(struct gpu_info *_gpu_info) {
   struct gpu_info_tpu *gpu_info = container_of(_gpu_info, struct gpu_info_tpu, base);
   struct gpuinfo_dynamic_info *dynamic_info = &gpu_info->base.dynamic_info;
+  struct gpuinfo_static_info *static_info = &gpu_info->base.static_info;
 
   struct tpu_chip_usage_data usage_data = {0};
 
@@ -747,6 +833,11 @@ void gpuinfo_tpu_refresh_dynamic_info(struct gpu_info *_gpu_info) {
       refresh_all_remote_hosts_parallel();
       if (d >= 0 && d < remote_hosts[h].tpu_count && remote_hosts[h].usage_data) {
         usage_data = remote_hosts[h].usage_data[d];
+      }
+      // Update device name if model was fetched
+      if (remote_hosts[h].tpu_model[0] && strncmp(static_info->device_name, "TPU [", 5) == 0) {
+        snprintf(static_info->device_name, sizeof(static_info->device_name),
+                 "%s [%d@%s]", remote_hosts[h].tpu_model, d, remote_hosts[h].ip);
       }
     }
   } else {
