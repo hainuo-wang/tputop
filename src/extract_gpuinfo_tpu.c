@@ -217,29 +217,17 @@ static bool local_tpu_model_initialized = false;
 
 /* Parse TPU version from string (e.g., "v4-64" -> "TPU v4", "v6e-8" -> "TPU v6e") */
 static bool parse_tpu_version(const char *str, char *out, size_t out_size) {
-  const char *p = str;
-  while (*p) {
-    if (*p == 'v' && p[1] >= '0' && p[1] <= '9') {
-      // Found vX pattern, extract version number
-      int version = 0;
-      const char *num_start = p + 1;
-      while (*num_start >= '0' && *num_start <= '9') {
-        version = version * 10 + (*num_start - '0');
-        num_start++;
-      }
-      // Check for suffix (e, p, lite)
-      const char *suffix = "";
-      if (strncmp(num_start, "lite", 4) == 0 || *num_start == 'e') {
-        suffix = "e";
-      } else if (*num_start == 'p') {
-        suffix = "p";
-      }
-      snprintf(out, out_size, "TPU v%d%s", version, suffix);
-      return true;
-    }
-    p++;
-  }
-  return false;
+  // Find 'v' followed by digit
+  const char *v = str;
+  while (*v && !(*v == 'v' && v[1] >= '0' && v[1] <= '9')) v++;
+  if (!*v) return false;
+
+  // Find '-' or end
+  const char *dash = strchr(v, '-');
+  int len = dash ? (int)(dash - v) : (int)strlen(v);
+
+  snprintf(out, out_size, "TPU %.*s", len, v);
+  return true;
 }
 
 /* Get TPU model from GCP metadata */
@@ -492,7 +480,7 @@ static bool refresh_remote_tpu_cache(int host_idx) {
            "python3 -c \""
            "import ctypes as C,os,sys;"
            "r=sys.argv[1] if len(sys.argv)>1 else \\\"\\\";"
-           "import re;m=re.search(r\\\"v(\\d+)(lite|e|p)?\\\",r);s=m.group(2)or\\\"\\\";model=\\\"TPU v\\\"+m.group(1)+(\\\"e\\\" if s in(\\\"lite\\\",\\\"e\\\")else \\\"p\\\" if s==\\\"p\\\" else\\\"\\\")if m else\\\"TPU\\\";"
+           "model=\\\"TPU \\\"+r.split(\\\"-\\\")[0] if \\\"-\\\" in r else \\\"TPU\\\";"
            "lib=C.CDLL(\\\"libtpuinfo.so\\\");"
            "lib.tpu_chip_count.restype=C.c_int;"
            "c=lib.tpu_chip_count();"
