@@ -217,7 +217,10 @@ static bool local_tpu_model_initialized = false;
 
 /* Parse TPU version from string (e.g., "v4-64" -> "TPU v4") */
 static bool parse_tpu_version(const char *str, char *out, size_t out_size) {
-  if (strstr(str, "v5lite") || strstr(str, "v5e")) {
+  if (strstr(str, "v6e")) {
+    snprintf(out, out_size, "TPU v6e");
+    return true;
+  } else if (strstr(str, "v5lite") || strstr(str, "v5e")) {
     snprintf(out, out_size, "TPU v5e");
     return true;
   } else if (strstr(str, "v5p")) {
@@ -486,7 +489,7 @@ static bool refresh_remote_tpu_cache(int host_idx) {
            "python3 -c \""
            "import ctypes as C,os,sys;"
            "r=sys.argv[1] if len(sys.argv)>1 else \\\"\\\";"
-           "model=\\\"TPU v5e\\\" if \\\"v5lite\\\" in r or \\\"v5e\\\" in r else \\\"TPU v5p\\\" if \\\"v5p\\\" in r else \\\"TPU v4\\\" if \\\"v4\\\" in r else \\\"TPU v3\\\" if \\\"v3\\\" in r else \\\"TPU v2\\\" if \\\"v2\\\" in r else \\\"TPU\\\";"
+           "model=\\\"TPU v6e\\\" if \\\"v6e\\\" in r else \\\"TPU v5e\\\" if \\\"v5lite\\\" in r or \\\"v5e\\\" in r else \\\"TPU v5p\\\" if \\\"v5p\\\" in r else \\\"TPU v4\\\" if \\\"v4\\\" in r else \\\"TPU v3\\\" if \\\"v3\\\" in r else \\\"TPU v2\\\" if \\\"v2\\\" in r else \\\"TPU\\\";"
            "lib=C.CDLL(\\\"libtpuinfo.so\\\");"
            "lib.tpu_chip_count.restype=C.c_int;"
            "c=lib.tpu_chip_count();"
