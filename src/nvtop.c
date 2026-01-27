@@ -185,8 +185,12 @@ int main(int argc, char **argv) {
       break;
     case 'o':
       tpu_mode = TPU_MODE_PODIPS;
-      if (optarg)
+      if (optarg) {
         tpu_podips_path = optarg;
+      } else if (optind < argc && argv[optind][0] != '-') {
+        tpu_podips_path = argv[optind];
+        optind++;
+      }
       break;
     case ':':
     case '?':

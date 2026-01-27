@@ -29,10 +29,10 @@ tputop
 | Command | Description |
 |---------|-------------|
 | `tputop` | Default: Monitor local TPU + remote workers (auto-discovery via GCP metadata, fallback to `NVTOP_TPU_POD_FILE`) |
-| `tputop --local` | Monitor local TPU only |
-| `tputop --podips` | Monitor TPUs from `~/podips.txt` only (no local TPU) |
-| `tputop --podips=name` | Monitor TPUs from `~/name.txt` (no local TPU) |
-| `tputop --podips=/path/to/file` | Monitor TPUs from specified path (no local TPU) |
+| `tputop --local` or `tputop -l` | Monitor local TPU only |
+| `tputop --podips` or `tputop -o` | Monitor TPUs from `~/podips.txt` only (no local TPU) |
+| `tputop --podips=name` or `tputop -o name` | Monitor TPUs from `~/name.txt` (no local TPU) |
+| `tputop --podips=/path/to/file` or `tputop -o /path/to/file` | Monitor TPUs from specified path (no local TPU) |
 
 The podips file should contain one IP address per line:
 ```
