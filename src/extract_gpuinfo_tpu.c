@@ -751,6 +751,11 @@ bool gpuinfo_tpu_get_device_handles(struct list_head *devices_list, unsigned *co
   *count = 0;
   if (tpu_chip_count <= 0 && !remote_monitoring_enabled) return false;
 
+#ifndef NDEBUG
+  fprintf(stderr, "[DEBUG] tpu_chip_count=%ld, remote_monitoring_enabled=%d, tpu_monitor_mode=%d\n",
+          tpu_chip_count, remote_monitoring_enabled, tpu_monitor_mode);
+#endif
+
   // Pre-allocate remote TPUs based on local count (avoid blocking at startup)
   // Actual data will be fetched on first refresh
   int tpus_per_host = (tpu_chip_count > 0) ? tpu_chip_count : 4;
@@ -771,7 +776,13 @@ bool gpuinfo_tpu_get_device_handles(struct list_head *devices_list, unsigned *co
   if (!gpu_infos) return false;
 
   // Add local TPUs
+#ifndef NDEBUG
+  fprintf(stderr, "[DEBUG] Adding %ld local TPUs\n", tpu_chip_count);
+#endif
   for (int64_t i = 0; i < tpu_chip_count; i++) {
+#ifndef NDEBUG
+    fprintf(stderr, "[DEBUG] Adding local TPU %ld\n", i);
+#endif
     add_tpu_chip(devices_list, count, false, -1, (int)i);
   }
 
